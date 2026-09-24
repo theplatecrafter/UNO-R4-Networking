@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Robot Control Center</title>
+    <style>
+        body { font-family: monospace; background: #121212; color: #00ffcc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh;}
+        
+        /* WIZARD UI */
+        .wizard-container { background: #1e1e1e; padding: 30px; border-radius: 12px; width: 600px; border: 1px solid #333; margin-top: 50px;}
+        .step { display: none; }
+        .step.active { display: block; animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        h2 { margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; color: #fff;}
+        p { color: #ccc; line-height: 1.5; font-family: sans-serif; font-size: 14px;}
+        
+        .input-group { margin: 15px 0; display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 12px; color: #aaa; }
+        input { padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 6px; font-family: monospace;}
+        input:focus { outline: none; border-color: #00ffcc; }
+        
+        .btn-group { margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end; }
+        button { padding: 10px 20px; background: #00ffcc; color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-family: monospace;}
+        button:hover { background: #00cca3; }
+        button.secondary { background: #444; color: #fff; }
+        button.secondary:hover { background: #555; }
+        button:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .error-msg { color: #ff5555; font-size: 13px; margin-top: 5px; display: none; }
+
+        /* DASHBOARD UI */
+        #main-dashboard { display: none; width: 100%; max-width: 1200px; }
+        .dashboard-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; align-items: start; margin-top: 20px;}
+        .feed-card { background: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .feed-card h3 { margin-top: 0; color: #ffffff; }
+        img.feed { border: 2px solid #00ffcc; border-radius: 6px; width: 480px; height: 360px; background-color: #000; cursor: crosshair;}
+        
+        .telemetry-card { background: #1e1e1e; padding: 20px; border-radius: 8px; width: 250px; border: 1px solid #333; }
+        .badge { padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .bg-green { background: #002b11; color: #00ff66; border: 1px solid #00ff66; }
+        .bg-red { background: #2b0000; color: #ff3333; border: 1px solid #ff3333; }
+        .bg-yellow { background: #2b2200; color: #ffd633; border: 1px solid #ffd633; }
+        .diagnostics { margin-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; }
+        .diagnostic-card { background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 15px; }
+        .diagnostic-card h3 { margin-top: 0; color: #fff; }
+        #log-console { height: 180px; overflow-y: auto; background: #090909; border: 1px solid #333; padding: 10px; color: #b8c7c3; font-size: 12px; white-space: pre-wrap; }
+        .log-error { color: #ff7777; } .log-warn { color: #ffd966; }
+        .detail-list { color: #ccc; font-size: 13px; line-height: 1.8; }
+        .command-card { margin-top: 20px; background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 15px; }
+        .command-card code { display: block; color: #ffd966; background: #090909; padding: 10px; overflow-wrap: anywhere; }
+        .command-meaning { color: #ccc; margin: 10px 0 0; }
+        .settings-panel { display: none; margin: 20px 0; background: #1e1e1e; border: 1px solid #00ffcc; border-radius: 8px; padding: 20px; }
+        .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+        .settings-grid .input-group { margin: 5px 0; }
+        .settings-message { color: #ffd966; min-height: 18px; }
+        .pin-section { border-top: 1px solid #333; margin-top: 18px; padding-top: 12px; }
+        .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+        .motor-options { color: #ccc; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+        .motor-options label { color: #ccc; font-size: 13px; }
+        .remote-control { margin-top: 20px; background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 15px; }
+        @media (max-width: 900px) { .diagnostics { grid-template-columns: 1fr; } img.feed { width: 100%; height: auto; } }
+        @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+    <!-- SETUP WIZARD -->
+    <div class="wizard-container" id="wizard">
+        
+        <div class="step active" id="step-1">
+            <h2>Step 1: Install Camera App</h2>
+            <p>Install <b>IP Webcam</b> from the Google Play Store on the phone you will mount to the robot.</p>
+            <div class="btn-group">
+                <button onclick="nextStep(2)">I Have the App Installed ➔</button>
+            </div>
+        </div>
+
+        <div class="step" id="step-2">
+            <h2>Step 2: Network Setup</h2>
+            <p>Turn on your Laptop's Mobile Hotspot. Both the phone and Arduino will connect to it.</p>
+            <p>Provide the network details so we can inject them into the Arduino code.</p>
+            <div class="input-group">
+                <label>Wi-Fi SSID (Hotspot Name)</label>
+                <input type="text" id="wifi_ssid" placeholder="MyRobotNetwork">
+            </div>
+            <div class="input-group">
+                <label>Wi-Fi Password</label>
+                <input type="text" id="wifi_pass" placeholder="Password123">
+            </div>
+            <div class="input-group">
+                <label>Laptop IPv4 Address (Auto-detected)</label>
+                <!-- We changed this line to pre-fill the value! -->
+                <input type="text" id="laptop_ip" value="{{ auto_ip }}">
+            </div>
+            <div class="btn-group">
+                <button onclick="nextStep(3)">Save Network Info ➔</button>
+            </div>
+        </div>
+
+        <div class="step" id="step-3">
+            <h2>Step 3: Connect Camera</h2>
+            <p>Open IP Webcam on the phone, tap <b>Start Server</b>. Enter the IP shown at the bottom of the screen.</p>
+            <div class="input-group">
+                <label>Phone IP Address</label>
+                <input type="text" id="cam_ip" placeholder="192.168.43.15">
+            </div>
+            <div class="input-group">
+                <label>Port</label>
+                <input type="text" id="cam_port" value="8080">
+            </div>
+            <div class="error-msg" id="cam-error">Failed to connect to camera. Check IP and ensure server is running.</div>
+            <div class="btn-group">
+                <button class="secondary" onclick="prevStep(2)">Back</button>
+                <button id="btn-test-cam" onclick="testCamera()">Test Connection ➔</button>
+            </div>
+        </div>
+
+        <div class="step" id="step-4">
+            <h2>Step 4: Flash the Robot</h2>
+            <p>Your latency-compensating Arduino code is ready. Wi-Fi, server, and motor pin settings will be injected.</p>
+            <div class="pin-section">
+                <h3>Motor Pin Mapping</h3>
+                <p>Enter the Arduino pins connected to each motor driver. EN should be a PWM-capable pin.</p>
+                <div class="pin-grid">
+                    <div class="input-group"><label>Left motor IN1</label><input id="wizard_left_motor_in1" type="number" value="2" min="0" max="53"></div>
+                    <div class="input-group"><label>Left motor IN2</label><input id="wizard_left_motor_in2" type="number" value="3" min="0" max="53"></div>
+                    <div class="input-group"><label>Left motor EN</label><input id="wizard_left_motor_en" type="number" value="6" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor IN1</label><input id="wizard_right_motor_in1" type="number" value="4" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor IN2</label><input id="wizard_right_motor_in2" type="number" value="5" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor EN</label><input id="wizard_right_motor_en" type="number" value="9" min="0" max="53"></div>
+                </div>
+                <h3>HC-SR04 Ultrasonic Sensor</h3>
+                <div class="pin-grid">
+                    <div class="input-group"><label>Ultrasonic Trig pin</label><input id="wizard_ultrasonic_trig_pin" type="number" value="10" min="0" max="53"></div>
+                    <div class="input-group"><label>Ultrasonic Echo pin</label><input id="wizard_ultrasonic_echo_pin" type="number" value="11" min="0" max="53"></div>
+                    <div class="input-group"><label>Stop distance (cm)</label><input id="wizard_obstacle_stop_distance_cm" type="number" value="20" min="1" step="0.5"></div>
+                </div>
+            </div>
+            <ol style="color: #ccc; font-family: sans-serif; font-size: 14px;">
+                <li>Click <b>Download setup.ino</b></li>
+                <li>Open it in the Arduino IDE and upload it to your UNO R4 WiFi.</li>
+            </ol>
+            <div class="btn-group" style="justify-content: flex-start; margin-bottom: 20px;">
+                <button onclick="downloadIno()">⬇ Download setup.ino</button>
+            </div>
+            <div class="btn-group">
+                <button class="secondary" onclick="prevStep(3)">Back</button>
+                <button onclick="nextStep(5)">Code is Uploaded ➔</button>
+            </div>
+        </div>
+
+        <div class="step" id="step-5">
+            <h2>Step 5: Connect to Robot</h2>
+            <p>Open the <b>Serial Monitor</b> in Arduino IDE. Wait for it to say "WiFi Connected!" and copy the IP Address below.</p>
+            <div class="input-group">
+                <label>Arduino IP Address</label>
+                <input type="text" id="ard_ip" placeholder="192.168.43.50">
+            </div>
+            <div class="btn-group">
+                <button class="secondary" onclick="prevStep(4)">Back</button>
+                <button onclick="finishSetup()">Finish Setup & Launch 🚀</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="main-dashboard">
+        <h1>Command Center</h1>
+        <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center;">
+            <button onclick="sendControl('start')">Start Engine</button>
+            <button class="secondary" style="background:#ff0055; color:#fff;" onclick="sendControl('stop')">Stop Engine</button>
+            <button class="secondary" onclick="toggleSettings()">Settings</button>
+            <button class="secondary" onclick="rotateFrame()">Rotate 90°</button>
+            <button class="secondary" onclick="requestCalibration()">Calibrate Motors</button>
+            <div class="motor-options">
+                <strong>Motor direction:</strong>
+                <label><input id="invert_left_motor" type="checkbox" onchange="updateMotorInversion()"> Invert left motor</label>
+                <label><input id="invert_right_motor" type="checkbox" onchange="updateMotorInversion()"> Invert right motor</label>
+                <label><input id="tracking_enabled" type="checkbox" checked onchange="toggleTrackingCalculations()"> Enable tracking calculations</label>
+            </div>
+            
+            <div style="margin-left: 20px; border-left: 1px solid #333; padding-left: 20px;">
+                <label for="tracker_select" style="color: #ccc; margin-right: 10px;">Tracking Model:</label>
+                <select id="tracker_select" onchange="switchTracker()" style="background: #2a2a2a; color: #00ffcc; padding: 5px 10px; border: 1px solid #444; border-radius: 4px;">
+                    <option value="hsv">HSV Color Tracker</option>
+                </select>
+            </div>
+        </div>
+
+        <section class="settings-panel" id="settings-panel">
+            <h2>Connection & Vision Settings</h2>
+            <div class="settings-grid">
+                <div class="input-group"><label>Camera IP Address</label><input id="settings_phone_ip" type="text"></div>
+                <div class="input-group"><label>Camera Port</label><input id="settings_phone_port" type="number" min="1" max="65535"></div>
+                <div class="input-group"><label>Arduino IP Address</label><input id="settings_arduino_ip" type="text"></div>
+                <div class="input-group"><label>Arduino UDP Port</label><input id="settings_arduino_port" type="number" min="1" max="65535"></div>
+                <div class="input-group"><label>Laptop Sync UDP Port</label><input id="settings_udp_listen_port" type="number" min="1" max="65535"></div>
+                <div class="input-group"><label>Camera FOV (degrees)</label><input id="settings_camera_fov_deg" type="number" min="1" max="360" step="0.1"></div>
+                <div class="input-group"><label>Frame rotation</label><select id="settings_frame_rotation_deg"><option value="0">0 degrees</option><option value="90">90 degrees clockwise</option><option value="180">180 degrees</option><option value="270">270 degrees clockwise</option></select></div>
+                <div class="input-group"><label>Ultrasonic Trig pin</label><input id="settings_ultrasonic_trig_pin" type="number" min="0" max="53"></div>
+                <div class="input-group"><label>Ultrasonic Echo pin</label><input id="settings_ultrasonic_echo_pin" type="number" min="0" max="53"></div>
+                <div class="input-group"><label>Obstacle stop distance (cm)</label><input id="settings_obstacle_stop_distance_cm" type="number" min="1" step="0.5"></div>
+                <div class="pin-section" style="grid-column: 1 / -1;"><h3>Motor Pin Mapping</h3><div class="pin-grid">
+                    <div class="input-group"><label>Left motor IN1</label><input id="settings_left_motor_in1" type="number" min="0" max="53"></div>
+                    <div class="input-group"><label>Left motor IN2</label><input id="settings_left_motor_in2" type="number" min="0" max="53"></div>
+                    <div class="input-group"><label>Left motor EN</label><input id="settings_left_motor_en" type="number" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor IN1</label><input id="settings_right_motor_in1" type="number" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor IN2</label><input id="settings_right_motor_in2" type="number" min="0" max="53"></div>
+                    <div class="input-group"><label>Right motor EN</label><input id="settings_right_motor_en" type="number" min="0" max="53"></div>
+                </div></div>
+            </div>
+            <div class="settings-message" id="settings-message"></div>
+            <div class="btn-group"><button class="secondary" onclick="toggleSettings()">Cancel</button><button onclick="saveSettings()">Save Settings</button></div>
+        </section>
+
+        <div class="dashboard-grid">
+            <div class="feed-card">
+                <h3>Live Camera (Click to pick color)</h3>
+                <img id="raw_feed" class="feed" src="" alt="Raw Stream">
+            </div>
+
+            <div class="feed-card">
+                <h3>OpenCV Tracking</h3>
+                <img id="proc_feed" class="feed" src="" alt="Processed Stream">
+            </div>
+
+            <div class="telemetry-card">
+                <h3>Telemetry</h3>
+                <p>Camera: <span id="camera_status" class="badge bg-red">Offline</span></p>
+                <p>Arduino: <span id="arduino_status" class="badge bg-yellow">Not configured</span></p>
+                <p>Worker: <span id="worker_status" class="badge bg-red">Offline</span></p>
+                <p>Status: <span id="status">--</span></p>
+                <p>Target Angle: <span id="target_angle">0</span>°</p>
+                <p>Network Latency: <span id="latency">0</span> ms</p>
+                <p>System FPS: <span id="fps">0</span></p>
+                <p>Frame Rotation: <span id="frame_rotation">0</span>°</p>
+                <p>Front Distance: <span id="obstacle_distance">--</span> cm</p>
+                <p>Calibration: <span id="calibration_status">Not calibrated</span></p>
+                <p>HSV Tracker: <span id="hsv_val">[0,0,0]</span></p>
+                <p>Control: <span id="control_mode">Tracking</span></p>
+                <p>Tracking calculations: <span id="tracking_status">Enabled</span></p>
+                <p>Manual command: <span id="manual_command">STOP</span></p>
+            </div>
+        </div>
+
+        <div class="remote-control">
+            <label><input id="manual_override" type="checkbox" onchange="toggleManualOverride()"> Enable WASD remote control</label>
+            <span class="detail-list"> W = forward, S = backward, A = left, D = right. Releasing the key stops the robot.</span>
+        </div>
+
+        <div class="diagnostics">
+            <div class="diagnostic-card">
+                <h3>Runtime log</h3>
+                <div id="log-console">Waiting for runtime events...</div>
+            </div>
+            <div class="diagnostic-card">
+                <h3>Connection details</h3>
+                <div class="detail-list">
+                    <div>Frames received: <b id="frames_received">0</b></div>
+                    <div>Last error: <b id="last_error">None</b></div>
+                    <div>Feed hint: start the engine after IP Webcam shows its live preview.</div>
+                </div>
+            </div>
+        </div>
+        <div class="command-card">
+            <h3>Latest Arduino command</h3>
+            <code id="arduino_command">None</code>
+            <p class="command-meaning" id="arduino_command_meaning">No command sent</p>
+            <div class="detail-list">Commands sent: <b id="arduino_commands_sent">0</b> | Last sent: <b id="arduino_last_sent_at">Never</b></div>
+        </div>
+    </div>
+
+    <script>
+        function showStep(stepNum) {
+            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-' + stepNum).classList.add('active');
+        }
+        function nextStep(stepNum) { showStep(stepNum); }
+        function prevStep(stepNum) { showStep(stepNum); }
+
+        async function testCamera() {
+            const btn = document.getElementById('btn-test-cam');
+            const errorTxt = document.getElementById('cam-error');
+            const ip = document.getElementById('cam_ip').value;
+            const port = document.getElementById('cam_port').value;
+            if(!ip) return;
+
+            btn.disabled = true; btn.innerText = "Testing..."; errorTxt.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/test_camera', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ip, port })
+                });
+                if (res.ok) nextStep(4);
+                else errorTxt.style.display = 'block';
+            } catch (err) { errorTxt.style.display = 'block'; } 
+            finally { btn.disabled = false; btn.innerText = "Test Connection ➔"; }
+        }
+
+        function downloadIno() {
+            const ssid = encodeURIComponent(document.getElementById('wifi_ssid').value || 'MyHotspot');
+            const pass = encodeURIComponent(document.getElementById('wifi_pass').value || '');
+            const laptop_ip = encodeURIComponent(document.getElementById('laptop_ip').value || '192.168.43.1');
+            const pinQuery = ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en']
+                .map(pin => `&${pin}=${encodeURIComponent(document.getElementById('wizard_' + pin).value)}`).join('');
+            const inversionQuery = `&invert_left_motor=${document.getElementById('invert_left_motor').checked ? 1 : 0}&invert_right_motor=${document.getElementById('invert_right_motor').checked ? 1 : 0}`;
+            const ultrasonicQuery = `&ultrasonic_trig_pin=${document.getElementById('wizard_ultrasonic_trig_pin').value}&ultrasonic_echo_pin=${document.getElementById('wizard_ultrasonic_echo_pin').value}&obstacle_stop_distance_cm=${document.getElementById('wizard_obstacle_stop_distance_cm').value}`;
+            window.location.href = `/api/download_ino?ssid=${ssid}&password=${pass}&laptop_ip=${laptop_ip}${pinQuery}${inversionQuery}${ultrasonicQuery}`;
+        }
+
+        async function finishSetup() {
+            const payload = {
+                phone_ip: document.getElementById('cam_ip').value,
+                phone_port: document.getElementById('cam_port').value,
+                arduino_ip: document.getElementById('ard_ip').value,
+                ...readWizardPins(),
+                ultrasonic_trig_pin: document.getElementById('wizard_ultrasonic_trig_pin').value,
+                ultrasonic_echo_pin: document.getElementById('wizard_ultrasonic_echo_pin').value,
+                obstacle_stop_distance_cm: document.getElementById('wizard_obstacle_stop_distance_cm').value
+            };
+
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                alert('Could not save configuration. Check the server log.');
+                return;
+            }
+
+            document.getElementById('wizard').style.display = 'none';
+            document.getElementById('main-dashboard').style.display = 'block';
+            
+            // Load feeds
+            document.getElementById('raw_feed').src = '/video_feed/raw';
+            document.getElementById('proc_feed').src = '/video_feed/processed';
+            
+            // Start engine automatically
+            sendControl('start');
+        }
+
+        function readWizardPins() {
+            const pins = {};
+            ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
+                pins[pin] = document.getElementById('wizard_' + pin).value;
+            });
+            return pins;
+        }
+
+        function sendControl(actionName) {
+            addClientLog(`Sending engine command: ${actionName}`);
+            fetch('/api/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: actionName })
+            });
+        }
+
+        async function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            const opening = panel.style.display !== 'block';
+            panel.style.display = opening ? 'block' : 'none';
+            if (!opening) return;
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                document.getElementById('settings_phone_ip').value = config.phone_ip || '';
+                document.getElementById('settings_phone_port').value = config.phone_port || 8080;
+                document.getElementById('settings_arduino_ip').value = config.arduino_ip || '';
+                document.getElementById('settings_arduino_port').value = config.arduino_port || 8888;
+                document.getElementById('settings_udp_listen_port').value = config.udp_listen_port || 8889;
+                document.getElementById('settings_camera_fov_deg').value = config.camera_fov_deg || 60;
+                document.getElementById('settings_frame_rotation_deg').value = config.frame_rotation_deg || 0;
+                document.getElementById('settings_ultrasonic_trig_pin').value = config.ultrasonic_trig_pin;
+                document.getElementById('settings_ultrasonic_echo_pin').value = config.ultrasonic_echo_pin;
+                document.getElementById('settings_obstacle_stop_distance_cm').value = config.obstacle_stop_distance_cm;
+                document.getElementById('invert_left_motor').checked = Boolean(config.invert_left_motor);
+                document.getElementById('invert_right_motor').checked = Boolean(config.invert_right_motor);
+                ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
+                    document.getElementById('settings_' + pin).value = config[pin];
+                });
+            } catch (error) { document.getElementById('settings-message').innerText = `Could not load settings: ${error}`; }
+        }
+
+        async function saveSettings() {
+            const payload = {
+                phone_ip: document.getElementById('settings_phone_ip').value.trim(),
+                phone_port: document.getElementById('settings_phone_port').value,
+                arduino_ip: document.getElementById('settings_arduino_ip').value.trim(),
+                arduino_port: document.getElementById('settings_arduino_port').value,
+                udp_listen_port: document.getElementById('settings_udp_listen_port').value,
+                camera_fov_deg: document.getElementById('settings_camera_fov_deg').value,
+                frame_rotation_deg: document.getElementById('settings_frame_rotation_deg').value,
+                invert_left_motor: document.getElementById('invert_left_motor').checked,
+                invert_right_motor: document.getElementById('invert_right_motor').checked
+                ,ultrasonic_trig_pin: document.getElementById('settings_ultrasonic_trig_pin').value
+                ,ultrasonic_echo_pin: document.getElementById('settings_ultrasonic_echo_pin').value
+                ,obstacle_stop_distance_cm: document.getElementById('settings_obstacle_stop_distance_cm').value
+            };
+            ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
+                payload[pin] = document.getElementById('settings_' + pin).value;
+            });
+            const message = document.getElementById('settings-message');
+            try {
+                const response = await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Server rejected settings');
+                message.innerText = 'Settings saved. Camera reconnect requested.';
+                addClientLog('Settings saved');
+                setTimeout(() => { document.getElementById('settings-panel').style.display = 'none'; }, 900);
+            } catch (error) { message.innerText = `Could not save settings: ${error.message}`; addClientLog(`Settings save failed: ${error}`, 'ERROR'); }
+        }
+
+        async function rotateFrame() {
+            try {
+                const response = await fetch('/api/rotate_frame', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Rotation failed');
+                document.getElementById('frame_rotation').innerText = result.frame_rotation_deg;
+                addClientLog(`Frame rotated to ${result.frame_rotation_deg} degrees`);
+            } catch (error) { addClientLog(`Frame rotation failed: ${error}`, 'ERROR'); }
+        }
+
+        async function requestCalibration() {
+            try {
+                const response = await fetch('/api/calibrate', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Calibration request failed');
+                addClientLog('Motor calibration requested; keep the robot clear of obstacles');
+            } catch (error) { addClientLog(`Calibration failed: ${error}`, 'ERROR'); }
+        }
+
+        async function updateMotorInversion() {
+            const left = document.getElementById('invert_left_motor').checked;
+            const right = document.getElementById('invert_right_motor').checked;
+            try {
+                const response = await fetch('/api/motor_inversion', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({left, right})
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Update failed');
+                addClientLog(`Motor inversion updated: left=${left}, right=${right}`);
+            } catch (error) {
+                addClientLog(`Motor inversion failed: ${error}`, 'ERROR');
+            }
+        }
+
+        async function toggleTrackingCalculations() {
+            const enabled = document.getElementById('tracking_enabled').checked;
+            try {
+                const response = await fetch('/api/tracking_mode', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled})
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Tracking mode update failed');
+                addClientLog(`Tracking calculations ${enabled ? 'enabled' : 'disabled'}; live feed remains active`);
+            } catch (error) {
+                document.getElementById('tracking_enabled').checked = !enabled;
+                addClientLog(`Tracking mode update failed: ${error}`, 'ERROR');
+            }
+        }
+
+        async function toggleManualOverride() {
+            const enabled = document.getElementById('manual_override').checked;
+            if (!enabled) { heldKeys.clear(); keyStartTimes.clear(); }
+            try {
+                const response = await fetch('/api/manual_mode', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled})
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Manual mode update failed');
+                addClientLog(`WASD remote control ${enabled ? 'enabled' : 'disabled'}; motors stopped`);
+            } catch (error) {
+                document.getElementById('manual_override').checked = !enabled;
+                addClientLog(`WASD remote control failed: ${error}`, 'ERROR');
+            }
+        }
+
+        const heldKeys = new Set();
+        const keyStartTimes = new Map();
+        const keyCommands = {w: 'FORWARD', s: 'BACKWARD', a: 'LEFT', d: 'RIGHT'};
+
+        function commandForHeldKeys() {
+            const priority = ['w', 's', 'a', 'd'];
+            const key = priority.find(heldKey => heldKeys.has(heldKey));
+            return key ? keyCommands[key] : 'STOP';
+        }
+
+        async function sendManualKey(command, durationSeconds = 0) {
+            if (!document.getElementById('manual_override').checked) return;
+            try {
+                await fetch('/api/manual_control', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command, duration_seconds: durationSeconds})
+                });
+            } catch (error) { addClientLog(`Manual command failed: ${error}`, 'ERROR'); }
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.target.matches('input, select, textarea')) return;
+            const command = keyCommands[event.key.toLowerCase()];
+            if (!command || heldKeys.has(event.key.toLowerCase())) return;
+            const key = event.key.toLowerCase();
+            heldKeys.add(key);
+            keyStartTimes.set(key, performance.now());
+            event.preventDefault();
+        });
+        document.addEventListener('keyup', (event) => {
+            const key = event.key.toLowerCase();
+            if (!keyCommands[key]) return;
+            heldKeys.delete(key);
+            const startedAt = keyStartTimes.get(key);
+            keyStartTimes.delete(key);
+            if (startedAt !== undefined) {
+                const durationSeconds = Math.max(0.01, (performance.now() - startedAt) / 1000);
+                sendManualKey(keyCommands[key], durationSeconds);
+                addClientLog(`Queued ${keyCommands[key]} for ${durationSeconds.toFixed(2)} seconds`);
+            }
+        });
+        window.addEventListener('blur', () => { heldKeys.clear(); keyStartTimes.clear(); sendManualKey('STOP'); });
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { heldKeys.clear(); keyStartTimes.clear(); sendManualKey('STOP'); }
+        });
+
+        function addClientLog(message, level = 'INFO') {
+            const consoleEl = document.getElementById('log-console');
+            if (!consoleEl) return;
+            const line = document.createElement('div');
+            line.className = level === 'ERROR' ? 'log-error' : (level === 'WARN' ? 'log-warn' : '');
+            line.textContent = `[browser] ${message}`;
+            consoleEl.appendChild(line);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function updateBadge(id, text, state) {
+            const badge = document.getElementById(id);
+            badge.innerText = text;
+            badge.className = `badge ${state === 'ok' ? 'bg-green' : (state === 'warn' ? 'bg-yellow' : 'bg-red')}`;
+        }
+
+        // Color Picker Logic
+        document.getElementById('raw_feed').addEventListener('click', (e) => {
+            const img = e.target;
+            const rect = img.getBoundingClientRect();
+            const scaleX = 640 / rect.width;
+            const scaleY = 480 / rect.height;
+            fetch('/select_color', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x: Math.floor((e.clientX - rect.left) * scaleX), y: Math.floor((e.clientY - rect.top) * scaleY) })
+            });
+        });
+
+        // Telemetry Stream Listener
+        const eventSource = new EventSource('/telemetry_stream');
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            document.getElementById('status').innerText = data.status;
+            document.getElementById('target_angle').innerText = data.target_angle;
+            document.getElementById('latency').innerText = data.pipeline_latency_ms;
+            document.getElementById('fps').innerText = data.fps;
+            document.getElementById('frame_rotation').innerText = data.frame_rotation_deg;
+            document.getElementById('obstacle_distance').innerText = data.obstacle_distance_cm > 0 ? data.obstacle_distance_cm.toFixed(1) : '--';
+            document.getElementById('calibration_status').innerText = data.calibration_status;
+            document.getElementById('hsv_val').innerText = JSON.stringify(data.sampled_hsv);
+
+            updateBadge('camera_status', data.camera_connected ? 'Online' : 'Offline', data.camera_connected ? 'ok' : 'bad');
+            updateBadge('worker_status', data.worker_alive ? 'Running' : 'Offline', data.worker_alive ? 'ok' : 'bad');
+            const arduinoConfigured = data.arduino_status && data.arduino_status !== 'Not configured';
+            updateBadge('arduino_status', arduinoConfigured ? 'Configured' : 'Not configured', arduinoConfigured ? 'ok' : 'warn');
+            document.getElementById('frames_received').innerText = data.frames_received;
+            document.getElementById('last_error').innerText = data.last_error || 'None';
+            document.getElementById('arduino_command').innerText = data.arduino_last_command;
+            document.getElementById('arduino_command_meaning').innerText = data.arduino_command_meaning;
+            document.getElementById('arduino_commands_sent').innerText = data.arduino_commands_sent;
+            document.getElementById('arduino_last_sent_at').innerText = data.arduino_last_sent_at;
+            document.getElementById('manual_override').checked = Boolean(data.manual_override);
+            document.getElementById('control_mode').innerText = data.manual_override ? 'WASD remote' : 'Tracking';
+            document.getElementById('manual_command').innerText = data.manual_command;
+            document.getElementById('tracking_enabled').checked = Boolean(data.tracking_enabled);
+            document.getElementById('tracking_status').innerText = data.tracking_enabled ? 'Enabled' : 'Disabled';
+            document.getElementById('invert_left_motor').checked = Boolean(data.motor_inversion.left);
+            document.getElementById('invert_right_motor').checked = Boolean(data.motor_inversion.right);
+        };
+
+        let renderedLogCount = 0;
+        async function refreshLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                const consoleEl = document.getElementById('log-console');
+                while (renderedLogCount < logs.length) {
+                    const item = logs[renderedLogCount++];
+                    const line = document.createElement('div');
+                    line.className = item.level === 'ERROR' ? 'log-error' : (item.level === 'WARN' ? 'log-warn' : '');
+                    line.textContent = `[${item.time}] ${item.level}: ${item.message}`;
+                    consoleEl.appendChild(line);
+                }
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            } catch (error) { addClientLog(`Could not load server logs: ${error}`, 'WARN'); }
+        }
+        setInterval(refreshLogs, 1000);
+        refreshLogs();
+
+        function switchTracker() {
+            const model = document.getElementById('tracker_select').value;
+            fetch('/api/set_tracker', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: model })
+            });
+        }
+    </script>
+</body>
+</html>
