@@ -135,6 +135,15 @@
                     <div class="input-group"><label>Ultrasonic Echo pin</label><input id="wizard_ultrasonic_echo_pin" type="number" value="11" min="0" max="53"></div>
                     <div class="input-group"><label>Stop distance (cm)</label><input id="wizard_obstacle_stop_distance_cm" type="number" value="20" min="1" step="0.5"></div>
                 </div>
+                <h3>Tracking Controller</h3>
+                <div class="pin-grid">
+                    <div class="input-group"><label>PID Kp</label><input id="wizard_pid_kp" type="number" value="0.7" min="0" max="10" step="0.05"></div>
+                    <div class="input-group"><label>PID Ki</label><input id="wizard_pid_ki" type="number" value="0.1" min="0" max="10" step="0.01"></div>
+                    <div class="input-group"><label>PID Kd</label><input id="wizard_pid_kd" type="number" value="0.05" min="0" max="10" step="0.01"></div>
+                    <div class="input-group"><label>Forward base (%)</label><input id="wizard_forward_base_percent" type="number" value="35" min="0" max="100"></div>
+                    <div class="input-group"><label>Maximum turn correction (%)</label><input id="wizard_turn_limit_percent" type="number" value="55" min="0" max="100"></div>
+                    <div class="input-group"><label>Center deadband (% frame width)</label><input id="wizard_center_deadband_percent" type="number" value="3" min="0" max="25" step="0.5"></div>
+                </div>
             </div>
             <ol style="color: #ccc; font-family: sans-serif; font-size: 14px;">
                 <li>Click <b>Download setup.ino</b></li>
@@ -171,14 +180,12 @@
             <button class="secondary" style="background:#ff0055; color:#fff;" onclick="sendControl('stop')">Stop Engine</button>
             <button class="secondary" onclick="toggleSettings()">Settings</button>
             <button class="secondary" onclick="rotateFrame()">Rotate 90°</button>
-            <button class="secondary" onclick="requestCalibration()">Calibrate Motors</button>
             <div class="motor-options">
                 <strong>Motor direction:</strong>
                 <label><input id="invert_left_motor" type="checkbox" onchange="updateMotorInversion()"> Invert left motor</label>
                 <label><input id="invert_right_motor" type="checkbox" onchange="updateMotorInversion()"> Invert right motor</label>
                 <label><input id="tracking_enabled" type="checkbox" checked onchange="toggleTrackingCalculations()"> Enable tracking calculations</label>
                 <label>Motor speed: <input id="motor_speed" type="range" min="0" max="100" value="100" step="1" oninput="updateMotorSpeed(this.value)"> <strong><span id="motor_speed_value">100</span>%</strong></label>
-                <label>Tracking instruction time: <input id="tracking_duration" type="range" min="0" max="200" value="100" step="1" oninput="updateTrackingDuration(this.value)"> <strong><span id="tracking_duration_value">100</span>%</strong></label>
             </div>
             
             <div style="margin-left: 20px; border-left: 1px solid #333; padding-left: 20px;">
@@ -196,12 +203,18 @@
                 <div class="input-group"><label>Camera Port</label><input id="settings_phone_port" type="number" min="1" max="65535"></div>
                 <div class="input-group"><label>Arduino IP Address</label><input id="settings_arduino_ip" type="text"></div>
                 <div class="input-group"><label>Arduino UDP Port</label><input id="settings_arduino_port" type="number" min="1" max="65535"></div>
-                <div class="input-group"><label>Laptop Sync UDP Port</label><input id="settings_udp_listen_port" type="number" min="1" max="65535"></div>
+                <div class="input-group"><label>Laptop sensor telemetry UDP port</label><input id="settings_udp_listen_port" type="number" min="1" max="65535"></div>
                 <div class="input-group"><label>Camera FOV (degrees)</label><input id="settings_camera_fov_deg" type="number" min="1" max="360" step="0.1"></div>
                 <div class="input-group"><label>Frame rotation</label><select id="settings_frame_rotation_deg"><option value="0">0 degrees</option><option value="90">90 degrees clockwise</option><option value="180">180 degrees</option><option value="270">270 degrees clockwise</option></select></div>
                 <div class="input-group"><label>Ultrasonic Trig pin</label><input id="settings_ultrasonic_trig_pin" type="number" min="0" max="53"></div>
                 <div class="input-group"><label>Ultrasonic Echo pin</label><input id="settings_ultrasonic_echo_pin" type="number" min="0" max="53"></div>
                 <div class="input-group"><label>Obstacle stop distance (cm)</label><input id="settings_obstacle_stop_distance_cm" type="number" min="1" step="0.5"></div>
+                <div class="input-group"><label>PID Kp</label><input id="settings_pid_kp" type="number" min="0" max="10" step="0.05"></div>
+                <div class="input-group"><label>PID Ki</label><input id="settings_pid_ki" type="number" min="0" max="10" step="0.01"></div>
+                <div class="input-group"><label>PID Kd</label><input id="settings_pid_kd" type="number" min="0" max="10" step="0.01"></div>
+                <div class="input-group"><label>Forward base (%)</label><input id="settings_forward_base_percent" type="number" min="0" max="100"></div>
+                <div class="input-group"><label>Maximum turn correction (%)</label><input id="settings_turn_limit_percent" type="number" min="0" max="100"></div>
+                <div class="input-group"><label>Center deadband (% frame width)</label><input id="settings_center_deadband_percent" type="number" min="0" max="25" step="0.5"></div>
                 <div class="pin-section" style="grid-column: 1 / -1;"><h3>Motor Pin Mapping</h3><div class="pin-grid">
                     <div class="input-group"><label>Left motor IN1</label><input id="settings_left_motor_in1" type="number" min="0" max="53"></div>
                     <div class="input-group"><label>Left motor IN2</label><input id="settings_left_motor_in2" type="number" min="0" max="53"></div>
@@ -233,17 +246,16 @@
                 <p>Worker: <span id="worker_status" class="badge bg-red">Offline</span></p>
                 <p>Status: <span id="status">--</span></p>
                 <p>Target Angle: <span id="target_angle">0</span>°</p>
+                <p>PID Correction: <span id="pid_output">0</span></p>
                 <p>Network Latency: <span id="latency">0</span> ms</p>
                 <p>System FPS: <span id="fps">0</span></p>
                 <p>Frame Rotation: <span id="frame_rotation">0</span>°</p>
                 <p>Front Distance: <span id="obstacle_distance">--</span> cm</p>
-                <p>Calibration: <span id="calibration_status">Not calibrated</span></p>
                 <p>HSV Tracker: <span id="hsv_val">[0,0,0]</span></p>
                 <p>Control: <span id="control_mode">Tracking</span></p>
                 <p>Tracking calculations: <span id="tracking_status">Enabled</span></p>
                 <p>Manual command: <span id="manual_command">STOP</span></p>
                 <p>Motor speed: <span id="motor_speed_status">100</span>%</p>
-                <p>Tracking instruction time: <span id="tracking_duration_status">100</span>%</p>
             </div>
         </div>
 
@@ -309,10 +321,8 @@
             const laptop_ip = encodeURIComponent(document.getElementById('laptop_ip').value || '192.168.43.1');
             const pinQuery = ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en']
                 .map(pin => `&${pin}=${encodeURIComponent(document.getElementById('wizard_' + pin).value)}`).join('');
-            const inversionQuery = `&invert_left_motor=${document.getElementById('invert_left_motor').checked ? 1 : 0}&invert_right_motor=${document.getElementById('invert_right_motor').checked ? 1 : 0}`;
             const ultrasonicQuery = `&ultrasonic_trig_pin=${document.getElementById('wizard_ultrasonic_trig_pin').value}&ultrasonic_echo_pin=${document.getElementById('wizard_ultrasonic_echo_pin').value}&obstacle_stop_distance_cm=${document.getElementById('wizard_obstacle_stop_distance_cm').value}`;
-            const speedQuery = `&motor_speed_percent=${document.getElementById('motor_speed').value}&tracking_duration_percent=${document.getElementById('tracking_duration').value}`;
-            window.location.href = `/api/download_ino?ssid=${ssid}&password=${pass}&laptop_ip=${laptop_ip}${pinQuery}${inversionQuery}${ultrasonicQuery}${speedQuery}`;
+            window.location.href = `/api/download_ino?ssid=${ssid}&password=${pass}&laptop_ip=${laptop_ip}${pinQuery}${ultrasonicQuery}`;
         }
 
         async function finishSetup() {
@@ -323,7 +333,13 @@
                 ...readWizardPins(),
                 ultrasonic_trig_pin: document.getElementById('wizard_ultrasonic_trig_pin').value,
                 ultrasonic_echo_pin: document.getElementById('wizard_ultrasonic_echo_pin').value,
-                obstacle_stop_distance_cm: document.getElementById('wizard_obstacle_stop_distance_cm').value
+                obstacle_stop_distance_cm: document.getElementById('wizard_obstacle_stop_distance_cm').value,
+                pid_kp: document.getElementById('wizard_pid_kp').value,
+                pid_ki: document.getElementById('wizard_pid_ki').value,
+                pid_kd: document.getElementById('wizard_pid_kd').value,
+                forward_base_percent: document.getElementById('wizard_forward_base_percent').value,
+                turn_limit_percent: document.getElementById('wizard_turn_limit_percent').value,
+                center_deadband_percent: document.getElementById('wizard_center_deadband_percent').value
             };
 
             const response = await fetch('/api/config', {
@@ -382,10 +398,14 @@
                 document.getElementById('settings_ultrasonic_trig_pin').value = config.ultrasonic_trig_pin;
                 document.getElementById('settings_ultrasonic_echo_pin').value = config.ultrasonic_echo_pin;
                 document.getElementById('settings_obstacle_stop_distance_cm').value = config.obstacle_stop_distance_cm;
+                document.getElementById('settings_pid_kp').value = config.pid_kp;
+                document.getElementById('settings_pid_ki').value = config.pid_ki;
+                document.getElementById('settings_pid_kd').value = config.pid_kd;
+                document.getElementById('settings_forward_base_percent').value = config.forward_base_percent;
+                document.getElementById('settings_turn_limit_percent').value = config.turn_limit_percent;
+                document.getElementById('settings_center_deadband_percent').value = config.center_deadband_percent;
                 document.getElementById('motor_speed').value = config.motor_speed_percent ?? 100;
                 document.getElementById('motor_speed_value').innerText = config.motor_speed_percent ?? 100;
-                document.getElementById('tracking_duration').value = config.tracking_duration_percent ?? 100;
-                document.getElementById('tracking_duration_value').innerText = config.tracking_duration_percent ?? 100;
                 document.getElementById('invert_left_motor').checked = Boolean(config.invert_left_motor);
                 document.getElementById('invert_right_motor').checked = Boolean(config.invert_right_motor);
                 ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
@@ -404,12 +424,17 @@
                 camera_fov_deg: document.getElementById('settings_camera_fov_deg').value,
                 frame_rotation_deg: document.getElementById('settings_frame_rotation_deg').value,
                 invert_left_motor: document.getElementById('invert_left_motor').checked,
-                invert_right_motor: document.getElementById('invert_right_motor').checked
-                ,ultrasonic_trig_pin: document.getElementById('settings_ultrasonic_trig_pin').value
-                ,ultrasonic_echo_pin: document.getElementById('settings_ultrasonic_echo_pin').value
-                ,obstacle_stop_distance_cm: document.getElementById('settings_obstacle_stop_distance_cm').value
-                ,motor_speed_percent: document.getElementById('motor_speed').value
-                ,tracking_duration_percent: document.getElementById('tracking_duration').value
+                invert_right_motor: document.getElementById('invert_right_motor').checked,
+                ultrasonic_trig_pin: document.getElementById('settings_ultrasonic_trig_pin').value,
+                ultrasonic_echo_pin: document.getElementById('settings_ultrasonic_echo_pin').value,
+                obstacle_stop_distance_cm: document.getElementById('settings_obstacle_stop_distance_cm').value,
+                motor_speed_percent: document.getElementById('motor_speed').value,
+                pid_kp: document.getElementById('settings_pid_kp').value,
+                pid_ki: document.getElementById('settings_pid_ki').value,
+                pid_kd: document.getElementById('settings_pid_kd').value,
+                forward_base_percent: document.getElementById('settings_forward_base_percent').value,
+                turn_limit_percent: document.getElementById('settings_turn_limit_percent').value,
+                center_deadband_percent: document.getElementById('settings_center_deadband_percent').value
             };
             ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
                 payload[pin] = document.getElementById('settings_' + pin).value;
@@ -435,15 +460,6 @@
             } catch (error) { addClientLog(`Frame rotation failed: ${error}`, 'ERROR'); }
         }
 
-        async function requestCalibration() {
-            try {
-                const response = await fetch('/api/calibrate', { method: 'POST' });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.message || 'Calibration request failed');
-                addClientLog('Motor calibration requested; keep the robot clear of obstacles');
-            } catch (error) { addClientLog(`Calibration failed: ${error}`, 'ERROR'); }
-        }
-
         async function updateMotorInversion() {
             const left = document.getElementById('invert_left_motor').checked;
             const right = document.getElementById('invert_right_motor').checked;
@@ -458,23 +474,6 @@
             } catch (error) {
                 addClientLog(`Motor inversion failed: ${error}`, 'ERROR');
             }
-        }
-
-        let trackingDurationUpdateTimer;
-        function updateTrackingDuration(value) {
-            document.getElementById('tracking_duration_value').innerText = value;
-            clearTimeout(trackingDurationUpdateTimer);
-            trackingDurationUpdateTimer = setTimeout(async () => {
-                try {
-                    const response = await fetch('/api/tracking_duration', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({percent: Number(value)})
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.message || 'Duration update failed');
-                    addClientLog(`Tracking instruction time set to ${value}%`);
-                } catch (error) { addClientLog(`Tracking duration update failed: ${error}`, 'ERROR'); }
-            }, 100);
         }
 
         let motorSpeedUpdateTimer;
@@ -511,7 +510,7 @@
 
         async function toggleManualOverride() {
             const enabled = document.getElementById('manual_override').checked;
-            if (!enabled) { heldKeys.clear(); keyStartTimes.clear(); }
+            if (!enabled) clearManualInput();
             try {
                 const response = await fetch('/api/manual_mode', {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled})
@@ -526,8 +525,8 @@
         }
 
         const heldKeys = new Set();
-        const keyStartTimes = new Map();
         const keyCommands = {w: 'FORWARD', s: 'BACKWARD', a: 'LEFT', d: 'RIGHT'};
+        let manualHeartbeat = null;
 
         function commandForHeldKeys() {
             const priority = ['w', 's', 'a', 'd'];
@@ -535,40 +534,63 @@
             return key ? keyCommands[key] : 'STOP';
         }
 
-        async function sendManualKey(command, durationSeconds = 0) {
+        async function sendManualKey(command) {
             if (!document.getElementById('manual_override').checked) return;
             try {
-                await fetch('/api/manual_control', {
+                const response = await fetch('/api/manual_control', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({command, duration_seconds: durationSeconds})
+                    body: JSON.stringify({command})
                 });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Command rejected');
             } catch (error) { addClientLog(`Manual command failed: ${error}`, 'ERROR'); }
         }
 
+        function sendCurrentManualTarget() {
+            sendManualKey(commandForHeldKeys());
+        }
+
+        function startManualHeartbeat() {
+            if (manualHeartbeat) return;
+            manualHeartbeat = setInterval(sendCurrentManualTarget, 150);
+        }
+
+        function clearManualInput() {
+            if (manualHeartbeat) clearInterval(manualHeartbeat);
+            manualHeartbeat = null;
+            heldKeys.clear();
+        }
+
         document.addEventListener('keydown', (event) => {
-            if (event.target.matches('input, select, textarea')) return;
-            const command = keyCommands[event.key.toLowerCase()];
-            if (!command || heldKeys.has(event.key.toLowerCase())) return;
             const key = event.key.toLowerCase();
+            const isEditingText = event.target.matches('input, select, textarea') && event.target.type !== 'checkbox';
+            if (isEditingText || !document.getElementById('manual_override').checked) return;
+            if (!keyCommands[key] || heldKeys.has(key)) return;
             heldKeys.add(key);
-            keyStartTimes.set(key, performance.now());
             event.preventDefault();
-        });
+            sendCurrentManualTarget();
+            startManualHeartbeat();
+        }, true);
         document.addEventListener('keyup', (event) => {
             const key = event.key.toLowerCase();
-            if (!keyCommands[key]) return;
+            if (!keyCommands[key] || !heldKeys.has(key)) return;
             heldKeys.delete(key);
-            const startedAt = keyStartTimes.get(key);
-            keyStartTimes.delete(key);
-            if (startedAt !== undefined) {
-                const durationSeconds = Math.max(0.01, (performance.now() - startedAt) / 1000);
-                sendManualKey(keyCommands[key], durationSeconds);
-                addClientLog(`Queued ${keyCommands[key]} for ${durationSeconds.toFixed(2)} seconds`);
+            if (heldKeys.size === 0) {
+                clearManualInput();
+                sendManualKey('STOP');
+            } else {
+                sendCurrentManualTarget();
             }
+        }, true);
+        window.addEventListener('blur', () => {
+            clearManualInput();
+            sendManualKey('STOP');
         });
-        window.addEventListener('blur', () => { heldKeys.clear(); keyStartTimes.clear(); sendManualKey('STOP'); });
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) { heldKeys.clear(); keyStartTimes.clear(); sendManualKey('STOP'); }
+            if (document.hidden) {
+                clearManualInput();
+                sendManualKey('STOP');
+            }
         });
 
         function addClientLog(message, level = 'INFO') {
@@ -606,11 +628,11 @@
             const data = JSON.parse(event.data);
             document.getElementById('status').innerText = data.status;
             document.getElementById('target_angle').innerText = data.target_angle;
+            document.getElementById('pid_output').innerText = data.pid_output.toFixed(3);
             document.getElementById('latency').innerText = data.pipeline_latency_ms;
             document.getElementById('fps').innerText = data.fps;
             document.getElementById('frame_rotation').innerText = data.frame_rotation_deg;
             document.getElementById('obstacle_distance').innerText = data.obstacle_distance_cm > 0 ? data.obstacle_distance_cm.toFixed(1) : '--';
-            document.getElementById('calibration_status').innerText = data.calibration_status;
             document.getElementById('hsv_val').innerText = JSON.stringify(data.sampled_hsv);
 
             updateBadge('camera_status', data.camera_connected ? 'Online' : 'Offline', data.camera_connected ? 'ok' : 'bad');
@@ -633,9 +655,6 @@
             document.getElementById('motor_speed').value = data.motor_speed_percent;
             document.getElementById('motor_speed_value').innerText = data.motor_speed_percent;
             document.getElementById('motor_speed_status').innerText = data.motor_speed_percent;
-            document.getElementById('tracking_duration').value = data.tracking_duration_percent;
-            document.getElementById('tracking_duration_value').innerText = data.tracking_duration_percent;
-            document.getElementById('tracking_duration_status').innerText = data.tracking_duration_percent;
         };
 
         let renderedLogCount = 0;
