@@ -30,6 +30,7 @@ app = Flask(__name__)
 # --- SYSTEM CONFIGURATION ---
 CONFIG = {
     "phone_url": "",
+    "phone_platform": "android",
     "arduino_ip": "",
     "arduino_port": 8888,
     "udp_listen_port": 8889,
@@ -485,6 +486,7 @@ def handle_config():
         try:
             phone_ip = str(data.get("phone_ip", "")).strip()
             phone_port = int(data.get("phone_port", 8080))
+            phone_platform = str(data.get("phone_platform", CONFIG["phone_platform"])).lower()
             arduino_ip = str(data.get("arduino_ip", "")).strip()
             arduino_port = int(data.get("arduino_port", 8888))
             udp_listen_port = int(data.get("udp_listen_port", CONFIG["udp_listen_port"]))
@@ -506,6 +508,8 @@ def handle_config():
             forward_base_percent = int(data.get("forward_base_percent", CONFIG["forward_base_percent"]))
             turn_limit_percent = int(data.get("turn_limit_percent", CONFIG["turn_limit_percent"]))
             center_deadband_percent = float(data.get("center_deadband_percent", CONFIG["center_deadband_percent"]))
+            if phone_platform not in {"android", "ios"}:
+                raise ValueError("Phone platform must be Android or iOS")
             if not phone_ip or not arduino_ip or not 1 <= phone_port <= 65535 or not 1 <= arduino_port <= 65535:
                 raise ValueError("Camera and Arduino IP addresses and valid ports are required")
             if any(not 0 <= pin <= 53 for pin in motor_pins.values()):
@@ -529,7 +533,9 @@ def handle_config():
             if not 0 <= center_deadband_percent <= 25:
                 raise ValueError("Center deadband must be between 0 and 25 percent of frame width")
             with config_lock:
-                CONFIG["phone_url"] = f"http://{phone_ip}:{phone_port}/video"
+                stream_path = "/video" if phone_platform == "android" else "/live"
+                CONFIG["phone_platform"] = phone_platform
+                CONFIG["phone_url"] = f"http://{phone_ip}:{phone_port}{stream_path}"
                 CONFIG["arduino_ip"] = arduino_ip
                 CONFIG["arduino_port"] = arduino_port
                 CONFIG["udp_listen_port"] = udp_listen_port
@@ -693,7 +699,11 @@ def rotate_frame():
 @app.route('/api/test_camera', methods=['POST'])
 def test_camera():
     data = request.get_json()
-    url = f"http://{data.get('ip')}:{data.get('port')}/video"
+    platform = str(data.get("platform", "android")).lower()
+    if platform not in {"android", "ios"}:
+        return jsonify({"status": "error", "message": "Phone platform must be Android or iOS"}), 400
+    stream_path = "/video" if platform == "android" else "/live"
+    url = f"http://{data.get('ip')}:{data.get('port')}{stream_path}"
     try:
         req = urllib.request.Request(url, method='GET')
         with urllib.request.urlopen(req, timeout=3) as response:

@@ -15,3 +15,5 @@ python3 -m launch
 ```
 You will need to go to http://localhost:5000 on your browser.
 Follow the instructions shown on the page.
+
+If experiencing issues with fps, try lowering the resolution or the framerate of the IP Webcam app on your phone.

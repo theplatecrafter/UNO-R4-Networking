@@ -68,8 +68,15 @@
     <div class="wizard-container" id="wizard">
         
         <div class="step active" id="step-1">
-            <h2>Step 1: Install Camera App</h2>
-            <p>Install <b>IP Webcam</b> from the Google Play Store on the phone you will mount to the robot.</p>
+            <h2>Step 1: Choose Phone Platform</h2>
+            <div class="input-group">
+                <label for="phone_platform">Phone platform</label>
+                <select id="phone_platform" onchange="updateCameraPlatformHelp()">
+                    <option value="android">Android</option>
+                    <option value="ios">iOS</option>
+                </select>
+            </div>
+            <p id="camera-platform-help">Install IP Webcam from Google Play, then start its server when prompted.</p>
             <div class="btn-group">
                 <button onclick="nextStep(2)">I Have the App Installed ➔</button>
             </div>
@@ -98,8 +105,8 @@
         </div>
 
         <div class="step" id="step-3">
-            <h2>Step 3: Connect Camera</h2>
-            <p>Open IP Webcam on the phone, tap <b>Start Server</b>. Enter the IP shown at the bottom of the screen.</p>
+            <h2>Step 3: Connect Phone Camera</h2>
+            <p id="camera-stream-help">Open IP Webcam, tap <b>Start Server</b>, then enter the phone IP below. The video endpoint is <code>/video</code>.</p>
             <div class="input-group">
                 <label>Phone IP Address</label>
                 <input type="text" id="cam_ip" placeholder="192.168.43.15">
@@ -201,6 +208,7 @@
             <div class="settings-grid">
                 <div class="input-group"><label>Camera IP Address</label><input id="settings_phone_ip" type="text"></div>
                 <div class="input-group"><label>Camera Port</label><input id="settings_phone_port" type="number" min="1" max="65535"></div>
+                <div class="input-group"><label>Phone platform</label><select id="settings_phone_platform"><option value="android">Android (IP Webcam)</option><option value="ios">iOS (SimpleIPCamera)</option></select></div>
                 <div class="input-group"><label>Arduino IP Address</label><input id="settings_arduino_ip" type="text"></div>
                 <div class="input-group"><label>Arduino UDP Port</label><input id="settings_arduino_port" type="number" min="1" max="65535"></div>
                 <div class="input-group"><label>Laptop sensor telemetry UDP port</label><input id="settings_udp_listen_port" type="number" min="1" max="65535"></div>
@@ -307,13 +315,28 @@
                 const res = await fetch('/api/test_camera', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ ip, port })
+                    body: JSON.stringify({ ip, port, platform: document.getElementById('phone_platform').value })
                 });
                 if (res.ok) nextStep(4);
                 else errorTxt.style.display = 'block';
             } catch (err) { errorTxt.style.display = 'block'; } 
             finally { btn.disabled = false; btn.innerText = "Test Connection ➔"; }
         }
+
+        function updateCameraPlatformHelp() {
+            const platform = document.getElementById('phone_platform').value;
+            const installHelp = document.getElementById('camera-platform-help');
+            const streamHelp = document.getElementById('camera-stream-help');
+            if (platform === 'ios') {
+                installHelp.innerHTML = 'Install SimpleIPCamera from the iOS App Store and start its camera stream when prompted.';
+                streamHelp.innerHTML = 'Open SimpleIPCamera and start its stream. Enter the phone IP below. The video endpoint is <code>/live</code>.';
+            } else {
+                installHelp.innerHTML = 'Install IP Webcam from Google Play, then start its server when prompted.';
+                streamHelp.innerHTML = 'Open IP Webcam, tap <b>Start Server</b>, then enter the phone IP below. The video endpoint is <code>/video</code>.';
+            }
+        }
+
+        updateCameraPlatformHelp();
 
         function downloadIno() {
             const ssid = encodeURIComponent(document.getElementById('wifi_ssid').value || 'MyHotspot');
@@ -329,6 +352,7 @@
             const payload = {
                 phone_ip: document.getElementById('cam_ip').value,
                 phone_port: document.getElementById('cam_port').value,
+                phone_platform: document.getElementById('phone_platform').value,
                 arduino_ip: document.getElementById('ard_ip').value,
                 ...readWizardPins(),
                 ultrasonic_trig_pin: document.getElementById('wizard_ultrasonic_trig_pin').value,
@@ -390,6 +414,7 @@
                 const config = await response.json();
                 document.getElementById('settings_phone_ip').value = config.phone_ip || '';
                 document.getElementById('settings_phone_port').value = config.phone_port || 8080;
+                document.getElementById('settings_phone_platform').value = config.phone_platform || 'android';
                 document.getElementById('settings_arduino_ip').value = config.arduino_ip || '';
                 document.getElementById('settings_arduino_port').value = config.arduino_port || 8888;
                 document.getElementById('settings_udp_listen_port').value = config.udp_listen_port || 8889;
@@ -418,6 +443,7 @@
             const payload = {
                 phone_ip: document.getElementById('settings_phone_ip').value.trim(),
                 phone_port: document.getElementById('settings_phone_port').value,
+                phone_platform: document.getElementById('settings_phone_platform').value,
                 arduino_ip: document.getElementById('settings_arduino_ip').value.trim(),
                 arduino_port: document.getElementById('settings_arduino_port').value,
                 udp_listen_port: document.getElementById('settings_udp_listen_port').value,
