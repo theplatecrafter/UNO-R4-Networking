@@ -177,6 +177,8 @@
                 <label><input id="invert_left_motor" type="checkbox" onchange="updateMotorInversion()"> Invert left motor</label>
                 <label><input id="invert_right_motor" type="checkbox" onchange="updateMotorInversion()"> Invert right motor</label>
                 <label><input id="tracking_enabled" type="checkbox" checked onchange="toggleTrackingCalculations()"> Enable tracking calculations</label>
+                <label>Motor speed: <input id="motor_speed" type="range" min="0" max="100" value="100" step="1" oninput="updateMotorSpeed(this.value)"> <strong><span id="motor_speed_value">100</span>%</strong></label>
+                <label>Tracking instruction time: <input id="tracking_duration" type="range" min="0" max="200" value="100" step="1" oninput="updateTrackingDuration(this.value)"> <strong><span id="tracking_duration_value">100</span>%</strong></label>
             </div>
             
             <div style="margin-left: 20px; border-left: 1px solid #333; padding-left: 20px;">
@@ -240,6 +242,8 @@
                 <p>Control: <span id="control_mode">Tracking</span></p>
                 <p>Tracking calculations: <span id="tracking_status">Enabled</span></p>
                 <p>Manual command: <span id="manual_command">STOP</span></p>
+                <p>Motor speed: <span id="motor_speed_status">100</span>%</p>
+                <p>Tracking instruction time: <span id="tracking_duration_status">100</span>%</p>
             </div>
         </div>
 
@@ -307,7 +311,8 @@
                 .map(pin => `&${pin}=${encodeURIComponent(document.getElementById('wizard_' + pin).value)}`).join('');
             const inversionQuery = `&invert_left_motor=${document.getElementById('invert_left_motor').checked ? 1 : 0}&invert_right_motor=${document.getElementById('invert_right_motor').checked ? 1 : 0}`;
             const ultrasonicQuery = `&ultrasonic_trig_pin=${document.getElementById('wizard_ultrasonic_trig_pin').value}&ultrasonic_echo_pin=${document.getElementById('wizard_ultrasonic_echo_pin').value}&obstacle_stop_distance_cm=${document.getElementById('wizard_obstacle_stop_distance_cm').value}`;
-            window.location.href = `/api/download_ino?ssid=${ssid}&password=${pass}&laptop_ip=${laptop_ip}${pinQuery}${inversionQuery}${ultrasonicQuery}`;
+            const speedQuery = `&motor_speed_percent=${document.getElementById('motor_speed').value}&tracking_duration_percent=${document.getElementById('tracking_duration').value}`;
+            window.location.href = `/api/download_ino?ssid=${ssid}&password=${pass}&laptop_ip=${laptop_ip}${pinQuery}${inversionQuery}${ultrasonicQuery}${speedQuery}`;
         }
 
         async function finishSetup() {
@@ -377,6 +382,10 @@
                 document.getElementById('settings_ultrasonic_trig_pin').value = config.ultrasonic_trig_pin;
                 document.getElementById('settings_ultrasonic_echo_pin').value = config.ultrasonic_echo_pin;
                 document.getElementById('settings_obstacle_stop_distance_cm').value = config.obstacle_stop_distance_cm;
+                document.getElementById('motor_speed').value = config.motor_speed_percent ?? 100;
+                document.getElementById('motor_speed_value').innerText = config.motor_speed_percent ?? 100;
+                document.getElementById('tracking_duration').value = config.tracking_duration_percent ?? 100;
+                document.getElementById('tracking_duration_value').innerText = config.tracking_duration_percent ?? 100;
                 document.getElementById('invert_left_motor').checked = Boolean(config.invert_left_motor);
                 document.getElementById('invert_right_motor').checked = Boolean(config.invert_right_motor);
                 ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
@@ -399,6 +408,8 @@
                 ,ultrasonic_trig_pin: document.getElementById('settings_ultrasonic_trig_pin').value
                 ,ultrasonic_echo_pin: document.getElementById('settings_ultrasonic_echo_pin').value
                 ,obstacle_stop_distance_cm: document.getElementById('settings_obstacle_stop_distance_cm').value
+                ,motor_speed_percent: document.getElementById('motor_speed').value
+                ,tracking_duration_percent: document.getElementById('tracking_duration').value
             };
             ['left_motor_in1', 'left_motor_in2', 'left_motor_en', 'right_motor_in1', 'right_motor_in2', 'right_motor_en'].forEach(pin => {
                 payload[pin] = document.getElementById('settings_' + pin).value;
@@ -447,6 +458,40 @@
             } catch (error) {
                 addClientLog(`Motor inversion failed: ${error}`, 'ERROR');
             }
+        }
+
+        let trackingDurationUpdateTimer;
+        function updateTrackingDuration(value) {
+            document.getElementById('tracking_duration_value').innerText = value;
+            clearTimeout(trackingDurationUpdateTimer);
+            trackingDurationUpdateTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/tracking_duration', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({percent: Number(value)})
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.message || 'Duration update failed');
+                    addClientLog(`Tracking instruction time set to ${value}%`);
+                } catch (error) { addClientLog(`Tracking duration update failed: ${error}`, 'ERROR'); }
+            }, 100);
+        }
+
+        let motorSpeedUpdateTimer;
+        function updateMotorSpeed(value) {
+            document.getElementById('motor_speed_value').innerText = value;
+            clearTimeout(motorSpeedUpdateTimer);
+            motorSpeedUpdateTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/motor_speed', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({percent: Number(value)})
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.message || 'Speed update failed');
+                    addClientLog(`Motor speed set to ${value}%`);
+                } catch (error) { addClientLog(`Motor speed update failed: ${error}`, 'ERROR'); }
+            }, 100);
         }
 
         async function toggleTrackingCalculations() {
@@ -585,6 +630,12 @@
             document.getElementById('tracking_status').innerText = data.tracking_enabled ? 'Enabled' : 'Disabled';
             document.getElementById('invert_left_motor').checked = Boolean(data.motor_inversion.left);
             document.getElementById('invert_right_motor').checked = Boolean(data.motor_inversion.right);
+            document.getElementById('motor_speed').value = data.motor_speed_percent;
+            document.getElementById('motor_speed_value').innerText = data.motor_speed_percent;
+            document.getElementById('motor_speed_status').innerText = data.motor_speed_percent;
+            document.getElementById('tracking_duration').value = data.tracking_duration_percent;
+            document.getElementById('tracking_duration_value').innerText = data.tracking_duration_percent;
+            document.getElementById('tracking_duration_status').innerText = data.tracking_duration_percent;
         };
 
         let renderedLogCount = 0;

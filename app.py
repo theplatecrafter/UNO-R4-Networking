@@ -46,6 +46,8 @@ CONFIG = {
     "ultrasonic_trig_pin": 10,
     "ultrasonic_echo_pin": 11,
     "obstacle_stop_distance_cm": 20.0,
+    "motor_speed_percent": 100,
+    "tracking_duration_percent": 100,
     "manual_override": False,
     "manual_command": "STOP",
     "manual_last_seen": 0.0,
@@ -86,6 +88,8 @@ telemetry = {
         ,"obstacle_distance_cm": -1.0
         ,"calibration_status": "Not calibrated"
         ,"tracking_enabled": True
+        ,"motor_speed_percent": 100
+        ,"tracking_duration_percent": 100
 }
 
 runtime_logs = deque(maxlen=200)
@@ -254,7 +258,7 @@ def process_video():
                     angle_deg = (offset_x / center_x) * (CONFIG["camera_fov_deg"] / 2.0)
                     cv2.line(processed_frame, (center_x, 0), (center_x, height), (255, 0, 0), 1)
 
-                    payload = f"TARGET,{capture_time:.4f},{angle_deg:.2f},{radius:.1f}"
+                    payload = f"TARGET,{capture_time:.4f},{angle_deg:.2f},{radius:.1f},0.100"
                     telemetry["status"] = "Tracking"
                     telemetry["target_angle"] = round(angle_deg, 1)
                 else:
@@ -421,6 +425,8 @@ def handle_config():
             ultrasonic_trig_pin = int(data.get("ultrasonic_trig_pin", CONFIG["ultrasonic_trig_pin"]))
             ultrasonic_echo_pin = int(data.get("ultrasonic_echo_pin", CONFIG["ultrasonic_echo_pin"]))
             obstacle_stop_distance_cm = float(data.get("obstacle_stop_distance_cm", CONFIG["obstacle_stop_distance_cm"]))
+            motor_speed_percent = int(data.get("motor_speed_percent", CONFIG["motor_speed_percent"]))
+            tracking_duration_percent = int(data.get("tracking_duration_percent", CONFIG["tracking_duration_percent"]))
             if not phone_ip or not arduino_ip or not 1 <= phone_port <= 65535 or not 1 <= arduino_port <= 65535:
                 raise ValueError("Camera and Arduino IP addresses and valid ports are required")
             if any(not 0 <= pin <= 53 for pin in motor_pins.values()):
@@ -435,6 +441,10 @@ def handle_config():
                 raise ValueError("Ultrasonic Trig and Echo pins must be different")
             if obstacle_stop_distance_cm <= 0:
                 raise ValueError("Obstacle stop distance must be greater than zero")
+            if not 0 <= motor_speed_percent <= 100:
+                raise ValueError("Motor speed must be between 0 and 100 percent")
+            if not 0 <= tracking_duration_percent <= 200:
+                raise ValueError("Tracking instruction duration must be between 0 and 200 percent")
             with config_lock:
                 CONFIG["phone_url"] = f"http://{phone_ip}:{phone_port}/video"
                 CONFIG["arduino_ip"] = arduino_ip
@@ -448,8 +458,12 @@ def handle_config():
                 CONFIG["ultrasonic_trig_pin"] = ultrasonic_trig_pin
                 CONFIG["ultrasonic_echo_pin"] = ultrasonic_echo_pin
                 CONFIG["obstacle_stop_distance_cm"] = obstacle_stop_distance_cm
+                CONFIG["motor_speed_percent"] = motor_speed_percent
+                CONFIG["tracking_duration_percent"] = tracking_duration_percent
                 telemetry["arduino_status"] = f"Configured for {arduino_ip}:{arduino_port}"
                 telemetry["motor_inversion"] = {"left": invert_left_motor, "right": invert_right_motor}
+                telemetry["motor_speed_percent"] = motor_speed_percent
+                telemetry["tracking_duration_percent"] = tracking_duration_percent
         except (TypeError, ValueError) as exc:
             add_log(f"Configuration rejected: {exc}", "ERROR")
             return jsonify({"status": "error", "message": str(exc)}), 400
@@ -458,6 +472,12 @@ def handle_config():
         try:
             udp_out.sendto(inversion_packet.encode(), (arduino_ip, arduino_port))
             add_log(f"Sent motor inversion to Arduino: {inversion_packet}")
+            speed_packet = f"SPEED,{motor_speed_percent}"
+            udp_out.sendto(speed_packet.encode(), (arduino_ip, arduino_port))
+            add_log(f"Sent motor speed to Arduino: {speed_packet}")
+            duration_packet = f"TRACK_DURATION,{tracking_duration_percent}"
+            udp_out.sendto(duration_packet.encode(), (arduino_ip, arduino_port))
+            add_log(f"Sent tracking duration to Arduino: {duration_packet}")
         except OSError as exc:
             add_log(f"Could not send initial motor inversion: {exc}", "WARN")
         reconnect_event.set()
@@ -519,6 +539,50 @@ def set_motor_inversion():
         return jsonify({"status": "success", "packet": packet})
     except OSError as exc:
         add_log(f"Could not send motor inversion to Arduino: {exc}", "ERROR")
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+@app.route('/api/motor_speed', methods=['POST'])
+def set_motor_speed():
+    data = request.get_json(silent=True) or {}
+    try:
+        speed_percent = int(data.get("percent"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Motor speed must be an integer from 0 to 100"}), 400
+    if not 0 <= speed_percent <= 100:
+        return jsonify({"status": "error", "message": "Motor speed must be between 0 and 100 percent"}), 400
+    with config_lock:
+        CONFIG["motor_speed_percent"] = speed_percent
+        arduino_address = (CONFIG["arduino_ip"], CONFIG["arduino_port"])
+    telemetry["motor_speed_percent"] = speed_percent
+    packet = f"SPEED,{speed_percent}"
+    try:
+        udp_out.sendto(packet.encode(), arduino_address)
+        add_log(f"Motor speed set to {speed_percent}%")
+        return jsonify({"status": "success", "percent": speed_percent, "packet": packet})
+    except OSError as exc:
+        add_log(f"Could not update motor speed: {exc}", "ERROR")
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+@app.route('/api/tracking_duration', methods=['POST'])
+def set_tracking_duration():
+    data = request.get_json(silent=True) or {}
+    try:
+        duration_percent = int(data.get("percent"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Tracking duration must be an integer from 0 to 200"}), 400
+    if not 0 <= duration_percent <= 200:
+        return jsonify({"status": "error", "message": "Tracking duration must be between 0 and 200 percent"}), 400
+    with config_lock:
+        CONFIG["tracking_duration_percent"] = duration_percent
+        arduino_address = (CONFIG["arduino_ip"], CONFIG["arduino_port"])
+    telemetry["tracking_duration_percent"] = duration_percent
+    packet = f"TRACK_DURATION,{duration_percent}"
+    try:
+        udp_out.sendto(packet.encode(), arduino_address)
+        add_log(f"Tracking instruction duration set to {duration_percent}%")
+        return jsonify({"status": "success", "percent": duration_percent, "packet": packet})
+    except OSError as exc:
+        add_log(f"Could not update tracking duration: {exc}", "ERROR")
         return jsonify({"status": "error", "message": str(exc)}), 500
 
 @app.route('/api/manual_mode', methods=['POST'])
@@ -635,7 +699,9 @@ def download_ino():
     ultrasonic_trig_pin = int(request.args.get('ultrasonic_trig_pin', 10))
     ultrasonic_echo_pin = int(request.args.get('ultrasonic_echo_pin', 11))
     obstacle_stop_distance_cm = float(request.args.get('obstacle_stop_distance_cm', 20.0))
-    if not 0 <= ultrasonic_trig_pin <= 53 or not 0 <= ultrasonic_echo_pin <= 53 or ultrasonic_trig_pin == ultrasonic_echo_pin or obstacle_stop_distance_cm <= 0:
+    motor_speed_percent = int(request.args.get('motor_speed_percent', 100))
+    tracking_duration_percent = int(request.args.get('tracking_duration_percent', 100))
+    if not 0 <= ultrasonic_trig_pin <= 53 or not 0 <= ultrasonic_echo_pin <= 53 or ultrasonic_trig_pin == ultrasonic_echo_pin or obstacle_stop_distance_cm <= 0 or not 0 <= motor_speed_percent <= 100 or not 0 <= tracking_duration_percent <= 200:
         return jsonify({"status": "error", "message": "Invalid HC-SR04 pins or stop distance"}), 400
     motor_pin_defaults = {
         "left_motor_in1": 2, "left_motor_in2": 3, "left_motor_en": 6,
@@ -672,6 +738,9 @@ const int ULTRASONIC_TRIG = __ULTRASONIC_TRIG_PIN__;
 const int ULTRASONIC_ECHO = __ULTRASONIC_ECHO_PIN__;
 const float OBSTACLE_STOP_DISTANCE_CM = __OBSTACLE_STOP_DISTANCE_CM__;
 float calibratedForwardSpeedCmS = 0.0;
+int motorSpeedPercent = __MOTOR_SPEED_PERCENT__;
+int trackingDurationPercent = __TRACKING_DURATION_PERCENT__;
+double trackingCommandUntil = 0.0;
 struct TimedCommand {
     String command;
     double startTime;
@@ -751,6 +820,10 @@ void loop() {
     parseAndExecuteCommand(String(packetBuffer));
   }
     runTimedCommands();
+    if (trackingCommandUntil > 0 && getSyncedTime() >= trackingCommandUntil) {
+        stopMotors();
+        trackingCommandUntil = 0.0;
+    }
 }
 
 void syncTimeWithLaptop() {
@@ -778,7 +851,14 @@ void syncTimeWithLaptop() {
 double getSyncedTime() { return (millis() / 1000.0) + laptopTimeOffsetSec; }
 
 void parseAndExecuteCommand(String packet) {
-    if (packet.startsWith("MANUAL_TIMED")) {
+    if (packet.startsWith("TRACK_DURATION")) {
+        trackingDurationPercent = constrain(packet.substring(packet.indexOf(',') + 1).toInt(), 0, 200);
+        Serial.print("[TRACKING] Instruction duration set to "); Serial.print(trackingDurationPercent); Serial.println("%");
+    } else if (packet.startsWith("SPEED")) {
+        motorSpeedPercent = packet.substring(packet.indexOf(',') + 1).toInt();
+        motorSpeedPercent = constrain(motorSpeedPercent, 0, 100);
+        Serial.print("[MOTOR] Speed set to "); Serial.print(motorSpeedPercent); Serial.println("%");
+    } else if (packet.startsWith("MANUAL_TIMED")) {
         int first = packet.indexOf(',');
         int second = packet.indexOf(',', first + 1);
         int third = packet.indexOf(',', second + 1);
@@ -811,10 +891,12 @@ void parseAndExecuteCommand(String packet) {
     int idx1 = packet.indexOf(',');
     int idx2 = packet.indexOf(',', idx1 + 1);
     int idx3 = packet.indexOf(',', idx2 + 1);
+    int idx4 = packet.indexOf(',', idx3 + 1);
 
     double captureTime = packet.substring(idx1 + 1, idx2).toDouble();
     float rawAngleDeg = packet.substring(idx2 + 1, idx3).toFloat();
-    float radius = packet.substring(idx3 + 1).toFloat();
+    float radius = idx4 > 0 ? packet.substring(idx3 + 1, idx4).toFloat() : packet.substring(idx3 + 1).toFloat();
+    float baseDuration = idx4 > 0 ? packet.substring(idx4 + 1).toFloat() : 0.100;
 
     Serial.print("[TARGET] Capture time: "); Serial.println(captureTime, 4);
     Serial.print("[TARGET] Raw angle: "); Serial.print(rawAngleDeg, 2);
@@ -831,9 +913,11 @@ void parseAndExecuteCommand(String packet) {
         Serial.print(" s, corrected angle: "); Serial.println(correctedAngleDeg, 2);
 
     driveProportional(correctedAngleDeg, radius);
+    trackingCommandUntil = getSyncedTime() + (baseDuration * trackingDurationPercent / 100.0);
   } else if (packet.startsWith("NO_TARGET")) {
         Serial.println("[TARGET] No target detected; stopping motors");
     stopMotors(); currentAngularVelocity = 0.0;
+    trackingCommandUntil = 0.0;
     } else {
         Serial.println("[UDP] Unknown command ignored");
   }
@@ -954,7 +1038,8 @@ void setMotor(int in1, int in2, int enablePin, bool forward, int speed, bool inv
     bool actualForward = inverted ? !forward : forward;
     digitalWrite(in1, actualForward ? HIGH : LOW);
     digitalWrite(in2, actualForward ? LOW : HIGH);
-    analogWrite(enablePin, speed);
+    int scaledSpeed = constrain((speed * motorSpeedPercent) / 100, 0, 255);
+    analogWrite(enablePin, scaledSpeed);
 }
 
 float readDistanceCm() {
@@ -1026,6 +1111,8 @@ void stopMotors() {
     ino_code = ino_code.replace('__ULTRASONIC_TRIG_PIN__', str(ultrasonic_trig_pin))
     ino_code = ino_code.replace('__ULTRASONIC_ECHO_PIN__', str(ultrasonic_echo_pin))
     ino_code = ino_code.replace('__OBSTACLE_STOP_DISTANCE_CM__', str(obstacle_stop_distance_cm))
+    ino_code = ino_code.replace('__MOTOR_SPEED_PERCENT__', str(motor_speed_percent))
+    ino_code = ino_code.replace('__TRACKING_DURATION_PERCENT__', str(tracking_duration_percent))
     for key, pin in motor_pins.items():
         ino_code = ino_code.replace(f'__{key.upper()}__', str(pin))
 
